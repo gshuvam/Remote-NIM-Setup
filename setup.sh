@@ -91,10 +91,34 @@ echo -e "${RESET}"
 echo -e "${BOLD}${BMAGENTA}         AUTOMATED REMOTE NVIDIA NIM SERVER INSTALLER${RESET}"
 echo -e "${BOLD}${BCYAN}======================================================================${RESET}\n"
 
-# Fetch Public IP dynamically
+# Detect and verify public IP dynamically
 print_status "Detecting VM public IP address"
-VM_PUBLIC_IP=$(curl -s --max-time 3 https://api.ipify.org || echo "YOUR_VM_IP")
-print_success "Detected Public IP: ${BOLD}${YELLOW}${VM_PUBLIC_IP}${RESET}"
+DETECTED_IP=$(curl -s --max-time 3 https://api.ipify.org || echo "")
+
+if [[ -n "$DETECTED_IP" ]]; then
+    print_success "Detected Public IP: ${BOLD}${YELLOW}${DETECTED_IP}${RESET}"
+    echo ""
+    print_warning "Standard cloud VM public IPs (AWS, Azure, GCP, etc.) are typically DYNAMIC and change on reboot."
+    print_info "For reliable DNS configuration, associate a Static IP (e.g. AWS Elastic IP, Azure Static Public IP, or GCP Static IP)."
+    echo ""
+    echo -e "${BOLD}${BCYAN}➔ Press ENTER to use the detected IP (${YELLOW}${DETECTED_IP}${RESET}${BOLD}),${RESET}"
+    echo -e "${BOLD}${BCYAN}  or enter your custom Elastic/Static IP address:${RESET}"
+    read -p "➔ " CUSTOM_IP < /dev/tty
+    if [[ -n "$CUSTOM_IP" ]]; then
+        VM_PUBLIC_IP="$CUSTOM_IP"
+        print_success "Using custom IP address: ${BOLD}${YELLOW}${VM_PUBLIC_IP}${RESET}"
+    else
+        VM_PUBLIC_IP="$DETECTED_IP"
+        print_success "Proceeding with detected IP: ${BOLD}${YELLOW}${VM_PUBLIC_IP}${RESET}"
+    fi
+else
+    print_warning "Could not auto-detect public IP."
+    echo -e "${BOLD}${BCYAN}➔ Please enter your VM's public/Elastic IP address:${RESET}"
+    read -p "➔ " VM_PUBLIC_IP < /dev/tty
+    if [[ -z "$VM_PUBLIC_IP" ]]; then
+        VM_PUBLIC_IP="YOUR_VM_IP"
+    fi
+fi
 echo ""
 
 print_status "Updating system packages via apt"
@@ -216,8 +240,8 @@ if [[ -n "$DOMAIN_NAME" ]]; then
     print_warning "Port 80 (HTTP) and Port 443 (HTTPS) MUST be open in your cloud firewall/security group!"
     print_info "Let's Encrypt (Certbot) requires Port 80 to be open to perform domain verification."
     echo ""
-    echo -e "  ${BOLD}1. AWS / Cloud Firewall Setup:${RESET}"
-    echo -e "     Ensure these Inbound Rules are active in your security group for this VM:"
+    echo -e "  ${BOLD}1. Cloud Firewall & Security Group Setup (AWS, Azure, GCP, etc.):${RESET}"
+    echo -e "     Ensure these Inbound Rules are active in your cloud provider's firewall console:"
     echo -e "       ${BOLD}${CYAN}• HTTP  (Port 80)${RESET}  ➔ source: ${BOLD}0.0.0.0/0${RESET}"
     echo -e "       ${BOLD}${CYAN}• HTTPS (Port 443)${RESET} ➔ source: ${BOLD}0.0.0.0/0${RESET}"
     echo ""
@@ -376,7 +400,7 @@ echo -e "${BOLD}${BBLUE}--------------------------------------------------------
 echo -e " ${BOLD}${BBLUE}★  IMPORTANT POST-INSTALL STEPS  ★${RESET}"
 echo -e "${BOLD}${BBLUE}----------------------------------------------------------------------${RESET}"
 
-echo -e "\n ${BOLD}${BYELLOW}1. AWS / CLOUD SECURITY GROUP CONFIGURATION${RESET}"
+echo -e "\n ${BOLD}${BYELLOW}1. CLOUD FIREWALL & SECURITY GROUP CONFIGURATION (AWS, Azure, GCP, etc.)${RESET}"
 echo -e "    Ensure these inbound ports are open to the internet:"
 echo -e "      ${BOLD}${CYAN}• Port 80${RESET}   (HTTP for Certbot / SSL redirects)"
 echo -e "      ${BOLD}${CYAN}• Port 443${RESET}  (HTTPS for secure public traffic)"
