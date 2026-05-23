@@ -165,7 +165,10 @@ print_info "You must provide two secure API keys to integrate and run the infere
 echo ""
 
 while true; do
-    echo -e "${BOLD}${BCYAN}➔ Enter ANTHROPIC_AUTH_TOKEN:${RESET}"
+    print_info "1. ANTHROPIC_AUTH_TOKEN:"
+    print_info "   This is your own custom password/auth token to secure your local bridge."
+    print_info "   Create any custom secure key you want (e.g. 'my-secure-nim-token')."
+    echo -e "${BOLD}${BCYAN}➔ Enter your custom ANTHROPIC_AUTH_TOKEN:${RESET}"
     read -p "➔ " ANTHROPIC_TOKEN < /dev/tty
     if [[ -n "$ANTHROPIC_TOKEN" ]]; then
         break
@@ -176,7 +179,12 @@ while true; do
 done
 
 while true; do
-    echo -e "\n${BOLD}${BCYAN}➔ Enter NVIDIA_NIM_API_KEY:${RESET}"
+    echo ""
+    print_info "2. NVIDIA_NIM_API_KEY:"
+    print_info "   This is used to authenticate with NVIDIA's NIM model servers."
+    print_info "   Procure a free key from the official NVIDIA Build console:"
+    print_info "   👉 https://build.nvidia.com/settings/api-keys"
+    echo -e "${BOLD}${BCYAN}➔ Enter your NVIDIA_NIM_API_KEY:${RESET}"
     read -p "➔ " NVIDIA_NIM_API_KEY < /dev/tty
     if [[ -n "$NVIDIA_NIM_API_KEY" ]]; then
         break
@@ -410,6 +418,17 @@ EOF
 echo -e "${RESET}"
 
 print_header "DEPLOYMENT COMPLETE & PERSISTENT"
+
+if [[ -n "$DOMAIN_NAME" ]] && [[ "$SSL_ENABLED" = false ]]; then
+    echo -e "${BOLD}${BRED}======================================================================${RESET}"
+    echo -e " ${BOLD}${BRED}✗  SSL CERTIFICATE GENERATION FAILED (HTTP Only)${RESET}"
+    echo -e "${BOLD}${BRED}======================================================================${RESET}"
+    echo -e "    Certbot failed to authenticate your domain (${BOLD}${DOMAIN_NAME}${RESET})."
+    echo -e "    This is almost certainly a ${BOLD}firewall problem${RESET} (Port 80/HTTP is blocked)."
+    echo -e "    Let's Encrypt requires port 80 to be open to complete verification."
+    echo -e "    Please open Port 80 in your cloud security group and retry."
+    echo -e "${BOLD}${BRED}======================================================================${RESET}\n"
+fi
 
 if [[ -n "$DOMAIN_NAME" ]]; then
     if [[ "$SSL_ENABLED" = true ]]; then
