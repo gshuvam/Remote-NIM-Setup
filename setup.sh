@@ -14,37 +14,6 @@ echo " Automated Remote NVIDIA NIM Server Installer"
 echo "====================================================="
 echo ""
 
-read -p "Enter your domain name (example.com): " DOMAIN_NAME
-
-if [[ -z "$DOMAIN_NAME" ]]; then
-    echo "ERROR: Domain name cannot be empty."
-    exit 1
-fi
-
-clear
-
-echo "============================================================"
-echo " BEFORE CONTINUING"
-echo "============================================================"
-echo ""
-echo "Your domain MUST already point to this VM IP."
-echo ""
-echo "GoDaddy DNS records required:"
-echo ""
-echo "A     @       -> YOUR_EC2_PUBLIC_IP"
-echo "A     www     -> YOUR_EC2_PUBLIC_IP"
-echo ""
-echo "Wait for DNS propagation before continuing."
-echo ""
-echo "Verify using:"
-echo "  ping ${DOMAIN_NAME}"
-echo ""
-echo "============================================================"
-echo ""
-
-read -p "Press ENTER once DNS is configured..."
-
-echo ""
 echo "==> Updating system packages..."
 sudo apt update
 
@@ -57,18 +26,23 @@ sudo apt install -y \
     certbot \
     python3-certbot-nginx
 
+echo ""
 echo "==> Installing uv..."
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 export PATH="$HOME/.local/bin:$PATH"
 
+echo ""
 echo "==> Installing Python 3.14..."
 uv python install 3.14
 
+echo ""
 echo "==> Cloning repository..."
+
 if [ -d "$PROJECT_DIR" ]; then
     echo "Directory '$PROJECT_DIR' already exists."
     echo "Pulling latest changes..."
+
     cd "$PROJECT_DIR"
     git pull
     cd ..
@@ -78,7 +52,9 @@ fi
 
 cd "$PROJECT_DIR"
 
+echo ""
 echo "==> Creating .env file..."
+
 if [ ! -f ".env" ]; then
     cp .env.example .env
 fi
@@ -89,7 +65,7 @@ echo "============================================================"
 echo "                ACTION REQUIRED"
 echo "============================================================"
 echo ""
-echo "You MUST update these values inside .env:"
+echo "Update these values inside .env:"
 echo ""
 echo 'ANTHROPIC_AUTH_TOKEN="YOUR_REAL_TOKEN"'
 echo 'NVIDIA_NIM_API_KEY="YOUR_NVIDIA_API_KEY"'
@@ -135,6 +111,68 @@ if ! grep -q 'NVIDIA_NIM_API_KEY=' .env; then
     exit 1
 fi
 
+clear
+
+echo "====================================================="
+echo " DOMAIN CONFIGURATION"
+echo "====================================================="
+echo ""
+echo "Optional, but recommended."
+echo ""
+echo "A domain is required ONLY if you want:"
+echo ""
+echo "  - HTTPS / SSL"
+echo "  - Public access via domain"
+echo "  - Nginx reverse proxy"
+echo ""
+echo "Examples:"
+echo ""
+echo "  example.com"
+echo "  api.example.com"
+echo "  ai.example.com"
+echo ""
+echo "Path-based examples (handled externally):"
+echo ""
+echo "  example.com/api/ai/v1"
+echo "  example.com/nim"
+echo ""
+echo "IMPORTANT:"
+echo "This installer only configures DOMAIN or SUBDOMAIN routing."
+echo "It does NOT configure URL path routing automatically."
+echo ""
+echo "Leave empty to skip Nginx + HTTPS setup."
+echo ""
+echo "====================================================="
+echo ""
+
+read -p "Enter domain/subdomain (or press ENTER to skip): " DOMAIN_NAME
+
+if [[ -n "$DOMAIN_NAME" ]]; then
+    clear
+
+    echo "============================================================"
+    echo " BEFORE CONTINUING"
+    echo "============================================================"
+    echo ""
+    echo "Your domain MUST already point to this VM IP."
+    echo ""
+    echo "GoDaddy DNS records required:"
+    echo ""
+    echo "A     @       -> YOUR_EC2_PUBLIC_IP"
+    echo "A     www     -> YOUR_EC2_PUBLIC_IP"
+    echo ""
+    echo "Wait for DNS propagation before continuing."
+    echo ""
+    echo "Verify using:"
+    echo ""
+    echo "  ping ${DOMAIN_NAME}"
+    echo ""
+    echo "============================================================"
+    echo ""
+
+    read -p "Press ENTER once DNS is configured..."
+fi
+
 echo ""
 echo "==> Creating systemd service..."
 
@@ -155,6 +193,7 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
+echo ""
 echo "==> Reloading systemd..."
 sudo systemctl daemon-reload
 
@@ -167,9 +206,19 @@ sudo systemctl restart ${SERVICE_NAME}
 sleep 5
 
 echo ""
-echo "==> Configuring Nginx reverse proxy..."
+echo "============================================================"
+echo " VERIFYING APPLICATION"
+echo "============================================================"
+echo ""
 
-sudo tee /etc/nginx/sites-available/${SERVICE_NAME} > /dev/null <<EOF
+sudo systemctl --no-pager status ${SERVICE_NAME} || true
+
+if [[ -n "$DOMAIN_NAME" ]]; then
+
+    echo ""
+    echo "==> Configuring Nginx reverse proxy..."
+
+    sudo tee /etc/nginx/sites-available/${SERVICE_NAME} > /dev/null <<EOF
 server {
     listen 80;
 
@@ -186,50 +235,57 @@ server {
 }
 EOF
 
-if [ ! -L "/etc/nginx/sites-enabled/${SERVICE_NAME}" ]; then
-    sudo ln -s \
-        /etc/nginx/sites-available/${SERVICE_NAME} \
-        /etc/nginx/sites-enabled/
+    if [ ! -L "/etc/nginx/sites-enabled/${SERVICE_NAME}" ]; then
+        sudo ln -s \
+            /etc/nginx/sites-available/${SERVICE_NAME} \
+            /etc/nginx/sites-enabled/
+    fi
+
+    echo ""
+    echo "==> Testing Nginx configuration..."
+    sudo nginx -t
+
+    echo "==> Reloading Nginx..."
+    sudo systemctl reload nginx
+
+    echo ""
+    echo "==> Enabling HTTPS with Certbot..."
+
+    sudo certbot --nginx \
+        -d ${DOMAIN_NAME} \
+        -d www.${DOMAIN_NAME} \
+        --redirect \
+        --agree-tos \
+        --register-unsafely-without-email \
+        -n
+
+    echo ""
+    echo "============================================================"
+    echo " VERIFYING NGINX"
+    echo "============================================================"
+    echo ""
+
+    sudo systemctl --no-pager status nginx || true
+
 fi
 
-echo "==> Testing Nginx configuration..."
-sudo nginx -t
+clear
 
-echo "==> Reloading Nginx..."
-sudo systemctl reload nginx
-
-echo ""
-echo "==> Enabling HTTPS with Certbot..."
-
-sudo certbot --nginx \
-    -d ${DOMAIN_NAME} \
-    -d www.${DOMAIN_NAME} \
-    --redirect \
-    --agree-tos \
-    --register-unsafely-without-email \
-    -n
-
-echo ""
-echo "============================================================"
-echo " VERIFYING SERVICES"
-echo "============================================================"
-echo ""
-
-echo "Application Service:"
-sudo systemctl --no-pager status ${SERVICE_NAME} || true
-
-echo ""
-echo "Nginx Service:"
-sudo systemctl --no-pager status nginx || true
-
-echo ""
 echo "============================================================"
 echo " INSTALLATION COMPLETE"
 echo "============================================================"
 echo ""
-echo "Your Remote NVIDIA NIM server is now live:"
-echo ""
-echo "  https://${DOMAIN_NAME}"
+
+if [[ -n "$DOMAIN_NAME" ]]; then
+    echo "Public URL:"
+    echo ""
+    echo "  https://${DOMAIN_NAME}"
+else
+    echo "Server URL:"
+    echo ""
+    echo "  http://YOUR_SERVER_IP:${APP_PORT}"
+fi
+
 echo ""
 echo "============================================================"
 echo " IMPORTANT POST-INSTALL STEPS"
@@ -242,29 +298,21 @@ echo ""
 echo "  80   (HTTP)"
 echo "  443  (HTTPS)"
 echo ""
+
+if [[ -z "$DOMAIN_NAME" ]]; then
+    echo "  8082 (Temporary direct access)"
+    echo ""
+fi
+
 echo "Remove public access to:"
 echo ""
 echo "  8082"
 echo ""
-echo "Your app should ONLY be exposed through Nginx."
+echo "after Nginx/HTTPS is working."
 echo ""
 echo "------------------------------------------------------------"
 echo ""
-echo "2. VERIFY DOMAIN"
-echo ""
-echo "Open in browser:"
-echo ""
-echo "  https://${DOMAIN_NAME}"
-echo ""
-echo "If site does not load:"
-echo ""
-echo "  - Check GoDaddy DNS"
-echo "  - Wait for DNS propagation"
-echo "  - Verify AWS Security Group"
-echo ""
-echo "------------------------------------------------------------"
-echo ""
-echo "3. VERIFY AUTO-START"
+echo "2. VERIFY AUTO-START"
 echo ""
 echo "Test reboot persistence:"
 echo ""
@@ -276,20 +324,24 @@ echo "  sudo systemctl status ${SERVICE_NAME}"
 echo ""
 echo "------------------------------------------------------------"
 echo ""
-echo "4. VIEW LIVE LOGS"
+echo "3. VIEW LIVE LOGS"
 echo ""
 echo "  sudo journalctl -u ${SERVICE_NAME} -f"
 echo ""
 echo "------------------------------------------------------------"
 echo ""
-echo "5. RESTART SERVICES"
+echo "4. RESTART SERVICES"
 echo ""
 echo "Application:"
 echo "  sudo systemctl restart ${SERVICE_NAME}"
 echo ""
-echo "Nginx:"
-echo "  sudo systemctl restart nginx"
-echo ""
+
+if [[ -n "$DOMAIN_NAME" ]]; then
+    echo "Nginx:"
+    echo "  sudo systemctl restart nginx"
+    echo ""
+fi
+
 echo "============================================================"
 echo " DEPLOYMENT COMPLETE"
 echo "============================================================"
