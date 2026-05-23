@@ -2,22 +2,99 @@
 
 set -euo pipefail
 
+# ANSI Color Codes
+BOLD='\033[1m'
+GREEN='\033[0;32m'
+BGREEN='\033[1;32m'
+BLUE='\033[0;34m'
+BBLUE='\033[1;34m'
+CYAN='\033[0;36m'
+BCYAN='\033[1;36m'
+YELLOW='\033[0;33m'
+BYELLOW='\033[1;33m'
+RED='\033[0;31m'
+BRED='\033[1;31m'
+MAGENTA='\033[0;35m'
+BMAGENTA='\033[1;35m'
+RESET='\033[0m'
+CLEAR_LINE='\033[2K\r'
+
+# Styled Printing Helpers
+print_header() {
+    echo -e "\n${BOLD}${BCYAN}======================================================================${RESET}"
+    echo -e " ${BOLD}${BMAGENTA}➔ $1${RESET}"
+    echo -e "${BOLD}${BCYAN}======================================================================${RESET}\n"
+}
+
+print_success() {
+    echo -e "${BGREEN}[✓] $1${RESET}"
+}
+
+print_warning() {
+    echo -e "${BYELLOW}[!] WARNING: $1${RESET}"
+}
+
+print_error() {
+    echo -e "${BRED}[✗] ERROR: $1${RESET}"
+}
+
+print_info() {
+    echo -e "${BBLUE}[i] $1${RESET}"
+}
+
+print_status() {
+    echo -e "${BCYAN}==➔ $1...${RESET}"
+}
+
+# Domain Sanitization Function
+sanitize_domain() {
+    local input="$1"
+    # Remove http:// or https://
+    local domain="${input#http://}"
+    domain="${domain#https://}"
+    # Remove any trailing path or slash
+    domain="${domain%%/*}"
+    # Remove port number if any
+    domain="${domain%%:*}"
+    # Remove www. prefix if present
+    domain="${domain#www.}"
+    echo "$domain"
+}
+
+# Domain Validation Function
+validate_domain() {
+    local domain="$1"
+    if [[ "$domain" =~ ^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 PROJECT_DIR="nvidia-nim"
 SERVICE_NAME="nvidia-nim"
 APP_PORT="8082"
 
 clear
 
-echo "====================================================="
-echo " Remote-NIM-Setup"
-echo " Automated Remote NVIDIA NIM Server Installer"
-echo "====================================================="
-echo ""
+# Premium Colorful Branding Banner
+echo -e "${BOLD}${BCYAN}"
+cat << "EOF"
+    ____                      __             _   _______ ___  ___
+   / __ \___  ____ ___  ____ / /____  ____  / | / /  _/  |/  |/ /
+  / /_/ / _ \/ __ `__ \/ __  / __/ _ \/ __ \/  |/ // / / /|_/ /|_/ 
+ / _, _/  __/ / / / / / /_/ / /_/  __/ /_/ / /|  // /_/ /  / /  /  
+/_/ |_|\___/_/ /_/ /_/\____/\__/\___/\____/_/ |_/___/_/  /_/  /_/   
+                                                                   
+EOF
+echo -e "${RESET}"
+echo -e "${BOLD}${BMAGENTA}         AUTOMATED REMOTE NVIDIA NIM SERVER INSTALLER${RESET}"
+echo -e "${BOLD}${BCYAN}======================================================================${RESET}\n"
 
-echo "==> Updating system packages..."
+print_status "Updating system packages via apt"
 sudo apt update
 
-echo "==> Installing required packages..."
+print_status "Installing dependency packages (curl, git, nginx, certbot)"
 sudo apt install -y \
     curl \
     git \
@@ -26,46 +103,56 @@ sudo apt install -y \
     python3-certbot-nginx
 
 echo ""
-echo "==> Installing uv..."
+print_status "Installing uv package manager"
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 export PATH="$HOME/.local/bin:$PATH"
 
 echo ""
-echo "==> Installing Python 3.14..."
+print_status "Installing Python 3.14 via uv"
 uv python install 3.14
 
 echo ""
-echo "==> Cloning repository..."
+print_status "Bootstrapping application repository"
 
 if [ -d "$PROJECT_DIR" ]; then
-    echo "Directory '$PROJECT_DIR' already exists."
-    echo "Pulling latest changes..."
-
+    print_info "Directory '$PROJECT_DIR' already exists. Pulling latest code changes..."
+    echo ""
     cd "$PROJECT_DIR"
     git pull
     cd ..
 else
+    print_info "Cloning Free-Claude-Code application..."
+    echo ""
     git clone https://github.com/gshuvam/free-claude-code.git "$PROJECT_DIR"
 fi
 
 cd "$PROJECT_DIR"
 
-echo ""
-echo "============================================================"
-echo " ENVIRONMENT CONFIGURATION"
-echo "============================================================"
-echo ""
-echo "You must provide:"
-echo ""
-echo "1. ANTHROPIC_AUTH_TOKEN"
-echo "2. NVIDIA_NIM_API_KEY"
-echo ""
-echo "============================================================"
+print_header "ENVIRONMENT CONFIGURATION"
+print_info "You must provide two secure API keys to integrate and run the inference server."
 echo ""
 
-read -p "Enter ANTHROPIC_AUTH_TOKEN: " ANTHROPIC_TOKEN < /dev/tty
-read -p "Enter NVIDIA_NIM_API_KEY: " NVIDIA_NIM_API_KEY < /dev/tty
+while true; do
+    echo -e "${BOLD}${BCYAN}➔ Enter ANTHROPIC_AUTH_TOKEN:${RESET}"
+    read -p "➔ " ANTHROPIC_TOKEN < /dev/tty
+    if [[ -n "$ANTHROPIC_TOKEN" ]]; then
+        break
+    else
+        print_error "ANTHROPIC_AUTH_TOKEN cannot be empty. Please enter a valid token."
+        echo ""
+    fi
+done
+
+while true; do
+    echo -e "\n${BOLD}${BCYAN}➔ Enter NVIDIA_NIM_API_KEY:${RESET}"
+    read -p "➔ " NVIDIA_NIM_API_KEY < /dev/tty
+    if [[ -n "$NVIDIA_NIM_API_KEY" ]]; then
+        break
+    else
+        print_error "NVIDIA_NIM_API_KEY cannot be empty. Please enter a valid API key."
+    fi
+done
 
 cat > .env <<EOF
 ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_TOKEN}"
@@ -73,84 +160,71 @@ NVIDIA_NIM_API_KEY="${NVIDIA_NIM_API_KEY}"
 EOF
 
 echo ""
-echo "==> Validating environment configuration..."
-
-if [[ -z "$ANTHROPIC_TOKEN" ]]; then
-    echo ""
-    echo "ERROR: ANTHROPIC_AUTH_TOKEN cannot be empty."
-    exit 1
-fi
-
-if [[ -z "$NVIDIA_NIM_API_KEY" ]]; then
-    echo ""
-    echo "ERROR: NVIDIA_NIM_API_KEY cannot be empty."
-    exit 1
-fi
+print_success "Environment configuration saved to ${BOLD}.env${RESET}"
+echo ""
 
 clear
 
-echo "====================================================="
-echo " DOMAIN CONFIGURATION"
-echo "====================================================="
-echo ""
-echo "Optional, but recommended."
-echo ""
-echo "A domain is required ONLY if you want:"
-echo ""
-echo "  - HTTPS / SSL"
-echo "  - Public access via domain"
-echo "  - Nginx reverse proxy"
-echo ""
-echo "Examples:"
-echo ""
-echo "  example.com"
-echo "  api.example.com"
-echo "  ai.example.com"
-echo ""
-echo "Path-based examples (handled externally):"
-echo ""
-echo "  example.com/api/ai/v1"
-echo "  example.com/nim"
-echo ""
-echo "IMPORTANT:"
-echo "This installer only configures DOMAIN or SUBDOMAIN routing."
-echo "It does NOT configure URL path routing automatically."
-echo ""
-echo "Leave empty to skip Nginx + HTTPS setup."
-echo ""
-echo "====================================================="
-echo ""
+print_header "DOMAIN CONFIGURATION"
+print_info "A domain or subdomain is required ONLY if you want to configure:"
+echo -e "  - ${BOLD}HTTPS / SSL Secure Access${RESET}"
+echo -e "  - ${BOLD}Public access${RESET} on ports 80/443"
+echo -e "  - ${BOLD}Nginx reverse proxy${RESET} routing\n"
 
-read -p "Enter domain/subdomain (or press ENTER to skip): " DOMAIN_NAME < /dev/tty
+print_warning "This installer configures DOMAIN or SUBDOMAIN routing (e.g. api.domain.com)."
+print_info "It does NOT configure URL path routing (e.g. domain.com/v1/nim) automatically."
+print_info "Leave empty and press ENTER to skip Nginx + HTTPS setup entirely.\n"
+
+DOMAIN_NAME=""
+while true; do
+    echo -e "${BOLD}${BCYAN}➔ Enter domain/subdomain${RESET} (or press ENTER to skip):"
+    read -p "➔ " RAW_DOMAIN < /dev/tty
+    if [[ -z "$RAW_DOMAIN" ]]; then
+        print_warning "Skipping Nginx + SSL setup. Direct access on port ${APP_PORT} will be used."
+        DOMAIN_NAME=""
+        sleep 2
+        break
+    fi
+    
+    # Sanitize and extract clean domain
+    DOMAIN_NAME=$(sanitize_domain "$RAW_DOMAIN")
+    
+    if validate_domain "$DOMAIN_NAME"; then
+        if [[ "$RAW_DOMAIN" != "$DOMAIN_NAME" ]]; then
+            echo ""
+            print_success "Extracted clean domain: ${BOLD}${BYELLOW}${DOMAIN_NAME}${RESET}"
+        fi
+        sleep 1.5
+        break
+    else
+        echo ""
+        print_error "Invalid domain format: '${RAW_DOMAIN}'."
+        print_info "Please enter a valid domain name (e.g. ${BOLD}api.byshuvam.co.in${RESET} or ${BOLD}domain.com${RESET})."
+        echo ""
+    fi
+done
 
 if [[ -n "$DOMAIN_NAME" ]]; then
     clear
-
-    echo "============================================================"
-    echo " BEFORE CONTINUING"
-    echo "============================================================"
+    print_header "DNS CONFIGURATION CHECK"
+    print_info "Your domain must point to this VM's public IP before proceeding."
     echo ""
-    echo "Your domain MUST already point to this VM IP."
+    echo -e "  ${BOLD}GoDaddy or DNS Provider Records Required:${RESET}"
+    echo -e "    ${BOLD}${CYAN}A     ${DOMAIN_NAME}${RESET}     ➔ ${BOLD}${GREEN}YOUR_EC2_PUBLIC_IP${RESET}"
+    echo -e "    ${BOLD}${CYAN}A     www.${DOMAIN_NAME}${RESET} ➔ ${BOLD}${GREEN}YOUR_EC2_PUBLIC_IP${RESET}"
     echo ""
-    echo "GoDaddy DNS records required:"
+    print_info "Verify propagation from another terminal using:"
+    echo -e "  ${BOLD}${YELLOW}ping ${DOMAIN_NAME}${RESET}"
     echo ""
-    echo "A     @       -> YOUR_EC2_PUBLIC_IP"
-    echo "A     www     -> YOUR_EC2_PUBLIC_IP"
+    print_warning "If DNS is not fully pointed yet, Certbot SSL certificate generation WILL fail."
     echo ""
-    echo "Wait for DNS propagation before continuing."
-    echo ""
-    echo "Verify using:"
-    echo ""
-    echo "  ping ${DOMAIN_NAME}"
-    echo ""
-    echo "============================================================"
-    echo ""
-
-    read -p "Press ENTER once DNS is configured..." < /dev/tty
+    
+    echo -e "${BOLD}${BCYAN}➔ Press ENTER once DNS is configured to continue...${RESET}"
+    read -p "" < /dev/tty
 fi
 
 echo ""
-echo "==> Creating systemd service..."
+print_status "Creating systemd service configuration"
 
 sudo tee /etc/systemd/system/${SERVICE_NAME}.service > /dev/null <<EOF
 [Unit]
@@ -169,30 +243,40 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-echo ""
-echo "==> Reloading systemd..."
+print_status "Reloading systemd daemon"
 sudo systemctl daemon-reload
 
-echo "==> Enabling auto-start on boot..."
+print_status "Enabling auto-start on boot"
 sudo systemctl enable ${SERVICE_NAME}
 
-echo "==> Starting application..."
+print_status "Starting application service"
 sudo systemctl restart ${SERVICE_NAME}
 
-sleep 5
+# Wait for service initialization
+print_status "Waiting for service to stabilize"
+for i in {1..5}; do
+    echo -ne "  [${i}/5] Waiting...\r"
+    sleep 1
+done
+echo -ne "${CLEAR_LINE}"
 
-echo ""
-echo "============================================================"
-echo " VERIFYING APPLICATION"
-echo "============================================================"
-echo ""
+print_header "VERIFYING APPLICATION SERVICE"
 
-sudo systemctl --no-pager status ${SERVICE_NAME} || true
+if sudo systemctl is-active --quiet ${SERVICE_NAME}; then
+    print_success "Application service '${BOLD}${SERVICE_NAME}${RESET}' is successfully running!"
+    echo ""
+    sudo systemctl --no-pager status ${SERVICE_NAME} | grep -E "Active:|Main PID:" || true
+else
+    print_error "Application service failed to start! Printing diagnostics:"
+    echo ""
+    sudo systemctl --no-pager status ${SERVICE_NAME} || true
+    print_warning "Review logs using: journalctl -u ${SERVICE_NAME} -n 50"
+fi
 
 if [[ -n "$DOMAIN_NAME" ]]; then
 
     echo ""
-    echo "==> Configuring Nginx reverse proxy..."
+    print_status "Configuring Nginx reverse proxy for ${BOLD}${DOMAIN_NAME}${RESET}"
 
     sudo tee /etc/nginx/sites-available/${SERVICE_NAME} > /dev/null <<EOF
 server {
@@ -217,15 +301,20 @@ EOF
             /etc/nginx/sites-enabled/
     fi
 
-    echo ""
-    echo "==> Testing Nginx configuration..."
-    sudo nginx -t
+    print_status "Testing Nginx configuration"
+    if sudo nginx -t > /dev/null 2>&1; then
+        print_success "Nginx configuration check passed!"
+    else
+        print_error "Nginx configuration check failed! Showing diagnostics:"
+        sudo nginx -t || true
+        exit 1
+    fi
 
-    echo "==> Reloading Nginx..."
+    print_status "Reloading Nginx reverse proxy"
     sudo systemctl reload nginx
 
     echo ""
-    echo "==> Enabling HTTPS with Certbot..."
+    print_status "Acquiring SSL certificate and enabling HTTPS with Certbot"
 
     sudo certbot --nginx \
         -d ${DOMAIN_NAME} \
@@ -235,89 +324,79 @@ EOF
         --register-unsafely-without-email \
         -n
 
-    echo ""
-    echo "============================================================"
-    echo " VERIFYING NGINX"
-    echo "============================================================"
-    echo ""
+    print_header "VERIFYING NGINX WEB SERVER"
 
-    sudo systemctl --no-pager status nginx || true
+    if sudo systemctl is-active --quiet nginx; then
+        print_success "Nginx reverse proxy is active and routing traffic securely!"
+        echo ""
+        sudo systemctl --no-pager status nginx | grep -E "Active:" || true
+    else
+        print_error "Nginx service is inactive! Showing status:"
+        echo ""
+        sudo systemctl --no-pager status nginx || true
+    fi
 
 fi
 
 clear
+echo -e "${BOLD}${BGREEN}"
+cat << "EOF"
+======================================================================
+  ██████╗ ███████╗██████╗ ██╗      ██████╗ ██╗   ██╗███╗   ███╗███████╗███╗   ██╗████████╗
+  ██╔══██╗██╔════╝██╔══██╗██║     ██╔═══██╗╚██╗ ██╔╝████╗ ████║██╔════╝████╗  ██║╚══██╔══╝
+  ██║  ██║█████╗  ██████╔╝██║     ██║   ██║ ╚████╔╝ ██╔████╔██║█████╗  ██╔██╗ ██║   ██║   
+  ██║  ██║██╔══╝  ██╔═══╝ ██║     ██║   ██║  ╚██╔╝  ██║╚██╔╝██║██╔══╝  ██║╚██╗██║   ██║   
+  ██████╔╝███████╗██║     ███████╗╚██████╔╝   ██║   ██║ ╚═╝ ██║███████╗██║ ╚████║   ██║   
+  ╚══════╝ ╚══════╝╚═╝     ╚══════╝ ╚═════╝    ╚═╝   ╚═╝     ╚═╝╚══════╝╚═╝  ╚═══╝   ╚═╝   
+======================================================================
+EOF
+echo -e "${RESET}"
 
-echo "============================================================"
-echo " INSTALLATION COMPLETE"
-echo "============================================================"
-echo ""
+print_header "DEPLOYMENT COMPLETE & PERSISTENT"
 
 if [[ -n "$DOMAIN_NAME" ]]; then
-    echo "Public URL:"
-    echo ""
-    echo "  https://${DOMAIN_NAME}"
+    echo -e "  ${BOLD}Public Secured Endpoint:${RESET}"
+    echo -e "    ${BOLD}${BGREEN}➔ https://${DOMAIN_NAME}${RESET}\n"
 else
-    echo "Server URL:"
-    echo ""
-    echo "  http://YOUR_SERVER_IP:${APP_PORT}"
+    echo -e "  ${BOLD}Local API Server Endpoint:${RESET}"
+    echo -e "    ${BOLD}${BYELLOW}➔ http://YOUR_SERVER_IP:${APP_PORT}${RESET}\n"
 fi
 
-echo ""
-echo "============================================================"
-echo " IMPORTANT POST-INSTALL STEPS"
-echo "============================================================"
-echo ""
-echo "1. AWS SECURITY GROUP"
-echo ""
-echo "Open these inbound ports:"
-echo ""
-echo "  80   (HTTP)"
-echo "  443  (HTTPS)"
-echo ""
+echo -e "${BOLD}${BBLUE}----------------------------------------------------------------------${RESET}"
+echo -e " ${BOLD}${BBLUE}★  IMPORTANT POST-INSTALL STEPS  ★${RESET}"
+echo -e "${BOLD}${BBLUE}----------------------------------------------------------------------${RESET}"
 
+echo -e "\n ${BOLD}${BYELLOW}1. AWS / CLOUD SECURITY GROUP CONFIGURATION${RESET}"
+echo -e "    Ensure these inbound ports are open to the internet:"
+echo -e "      ${BOLD}${CYAN}• Port 80${RESET}   (HTTP for Certbot / SSL redirects)"
+echo -e "      ${BOLD}${CYAN}• Port 443${RESET}  (HTTPS for secure public traffic)"
 if [[ -z "$DOMAIN_NAME" ]]; then
-    echo "  8082 (Temporary direct access)"
-    echo ""
+    echo -e "      ${BOLD}${CYAN}• Port 8082${RESET} (Temporary direct API endpoint)"
 fi
+echo ""
+echo -e "    ${BOLD}${BRED}⚠ SECURITY NOTE:${RESET} Remember to disable external access to port ${BOLD}${APP_PORT}${RESET}"
+echo -e "    once your Nginx reverse proxy and HTTPS domain is working."
 
-echo "Remove public access to:"
-echo ""
-echo "  8082"
-echo ""
-echo "after Nginx/HTTPS is working."
-echo ""
-echo "------------------------------------------------------------"
-echo ""
-echo "2. VERIFY AUTO-START"
-echo ""
-echo "Test reboot persistence:"
-echo ""
-echo "  sudo reboot"
-echo ""
-echo "Reconnect SSH and verify:"
-echo ""
-echo "  sudo systemctl status ${SERVICE_NAME}"
-echo ""
-echo "------------------------------------------------------------"
-echo ""
-echo "3. VIEW LIVE LOGS"
-echo ""
-echo "  sudo journalctl -u ${SERVICE_NAME} -f"
-echo ""
-echo "------------------------------------------------------------"
-echo ""
-echo "4. RESTART SERVICES"
-echo ""
-echo "Application:"
-echo "  sudo systemctl restart ${SERVICE_NAME}"
-echo ""
+echo -e "\n ${BOLD}${BYELLOW}2. TEST AUTO-START & REBOOT PERSISTENCE${RESET}"
+echo -e "    Run this command to test systemd restart on crash:"
+echo -e "      ${BOLD}${CYAN}sudo systemctl restart ${SERVICE_NAME}${RESET}"
+echo -e "    Then verify persistence on a full machine restart:"
+echo -e "      ${BOLD}${CYAN}sudo reboot${RESET}"
+echo -e "    Reconnect your SSH session and verify:"
+echo -e "      ${BOLD}${CYAN}sudo systemctl status ${SERVICE_NAME}${RESET}"
 
+echo -e "\n ${BOLD}${BYELLOW}3. VIEW RUNTIME LIVE LOGS${RESET}"
+echo -e "    Stream active application logs live using systemd journal:"
+echo -e "      ${BOLD}${CYAN}sudo journalctl -u ${SERVICE_NAME} -f${RESET}"
+
+echo -e "\n ${BOLD}${BYELLOW}4. RESTARTING SERVICES${RESET}"
+echo -e "    Application Server:"
+echo -e "      ${BOLD}${CYAN}sudo systemctl restart ${SERVICE_NAME}${RESET}"
 if [[ -n "$DOMAIN_NAME" ]]; then
-    echo "Nginx:"
-    echo "  sudo systemctl restart nginx"
-    echo ""
+    echo -e "    Nginx Web Server:"
+    echo -e "      ${BOLD}${CYAN}sudo systemctl restart nginx${RESET}"
 fi
 
-echo "============================================================"
-echo " DEPLOYMENT COMPLETE"
-echo "============================================================"
+echo -e "\n${BOLD}${BCYAN}======================================================================${RESET}"
+print_success "Server successfully deployed using Python 3.14 + uv + systemd + Nginx!"
+echo -e "${BOLD}${BCYAN}======================================================================${RESET}\n"
