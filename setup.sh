@@ -91,6 +91,12 @@ echo -e "${RESET}"
 echo -e "${BOLD}${BMAGENTA}         AUTOMATED REMOTE NVIDIA NIM SERVER INSTALLER${RESET}"
 echo -e "${BOLD}${BCYAN}======================================================================${RESET}\n"
 
+# Fetch Public IP dynamically
+print_status "Detecting VM public IP address"
+VM_PUBLIC_IP=$(curl -s --max-time 3 https://api.ipify.org || echo "YOUR_VM_IP")
+print_success "Detected Public IP: ${BOLD}${YELLOW}${VM_PUBLIC_IP}${RESET}"
+echo ""
+
 print_status "Updating system packages via apt"
 sudo apt update
 
@@ -206,20 +212,25 @@ done
 
 if [[ -n "$DOMAIN_NAME" ]]; then
     clear
-    print_header "DNS CONFIGURATION CHECK"
-    print_info "Your domain must point to this VM's public IP before proceeding."
+    print_header "DNS & FIREWALL PRE-REQUISITES"
+    print_warning "Port 80 (HTTP) and Port 443 (HTTPS) MUST be open in your cloud firewall/security group!"
+    print_info "Let's Encrypt (Certbot) requires Port 80 to be open to perform domain verification."
     echo ""
-    echo -e "  ${BOLD}GoDaddy or DNS Provider Records Required:${RESET}"
-    echo -e "    ${BOLD}${CYAN}A     ${DOMAIN_NAME}${RESET}     ➔ ${BOLD}${GREEN}YOUR_EC2_PUBLIC_IP${RESET}"
-    echo -e "    ${BOLD}${CYAN}A     www.${DOMAIN_NAME}${RESET} ➔ ${BOLD}${GREEN}YOUR_EC2_PUBLIC_IP${RESET}"
+    echo -e "  ${BOLD}1. AWS / Cloud Firewall Setup:${RESET}"
+    echo -e "     Ensure these Inbound Rules are active in your security group for this VM:"
+    echo -e "       ${BOLD}${CYAN}• HTTP  (Port 80)${RESET}  ➔ source: ${BOLD}0.0.0.0/0${RESET}"
+    echo -e "       ${BOLD}${CYAN}• HTTPS (Port 443)${RESET} ➔ source: ${BOLD}0.0.0.0/0${RESET}"
     echo ""
-    print_info "Verify propagation from another terminal using:"
-    echo -e "  ${BOLD}${YELLOW}ping ${DOMAIN_NAME}${RESET}"
+    echo -e "  ${BOLD}2. DNS Record Setup (GoDaddy, Cloudflare, etc.):${RESET}"
+    echo -e "     Ensure your domain points to this VM's IP (${BOLD}${VM_PUBLIC_IP}${RESET}):"
+    echo -e "       ${BOLD}${CYAN}A     ${DOMAIN_NAME}${RESET} ➔ ${BOLD}${GREEN}${VM_PUBLIC_IP}${RESET}"
     echo ""
-    print_warning "If DNS is not fully pointed yet, Certbot SSL certificate generation WILL fail."
+    print_info "Verify propagation from another terminal using: ${BOLD}ping ${DOMAIN_NAME}${RESET}"
+    echo ""
+    print_warning "If firewall ports are closed or DNS is not pointed, SSL generation WILL fail."
     echo ""
     
-    echo -e "${BOLD}${BCYAN}➔ Press ENTER once DNS is configured to continue...${RESET}"
+    echo -e "${BOLD}${BCYAN}➔ Press ENTER once DNS and Firewall (Port 80/443) are configured to continue...${RESET}"
     read -p "" < /dev/tty
 fi
 
@@ -282,7 +293,7 @@ if [[ -n "$DOMAIN_NAME" ]]; then
 server {
     listen 80;
 
-    server_name ${DOMAIN_NAME} www.${DOMAIN_NAME};
+    server_name ${DOMAIN_NAME};
 
     location / {
         proxy_pass http://127.0.0.1:${APP_PORT};
@@ -318,7 +329,6 @@ EOF
 
     sudo certbot --nginx \
         -d ${DOMAIN_NAME} \
-        -d www.${DOMAIN_NAME} \
         --redirect \
         --agree-tos \
         --register-unsafely-without-email \
