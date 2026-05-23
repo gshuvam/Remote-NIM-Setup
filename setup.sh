@@ -21,7 +21,6 @@ echo "==> Installing required packages..."
 sudo apt install -y \
     curl \
     git \
-    nano \
     nginx \
     certbot \
     python3-certbot-nginx
@@ -53,61 +52,38 @@ fi
 cd "$PROJECT_DIR"
 
 echo ""
-echo "==> Creating .env file..."
-
-if [ ! -f ".env" ]; then
-    cp .env.example .env
-fi
-
-clear
-
 echo "============================================================"
-echo "                ACTION REQUIRED"
+echo " ENVIRONMENT CONFIGURATION"
 echo "============================================================"
 echo ""
-echo "Update these values inside .env:"
+echo "You must provide:"
 echo ""
-echo 'ANTHROPIC_AUTH_TOKEN="YOUR_REAL_TOKEN"'
-echo 'NVIDIA_NIM_API_KEY="YOUR_NVIDIA_API_KEY"'
-echo ""
-echo "SAVE AND EXIT NANO:"
-echo ""
-echo "  CTRL + O   -> Save"
-echo "  ENTER      -> Confirm"
-echo "  CTRL + X   -> Exit"
+echo "1. ANTHROPIC_AUTH_TOKEN"
+echo "2. NVIDIA_NIM_API_KEY"
 echo ""
 echo "============================================================"
 echo ""
 
-sleep 3
+read -p "Enter ANTHROPIC_AUTH_TOKEN: " ANTHROPIC_TOKEN
+read -p "Enter NVIDIA_NIM_API_KEY: " NVIDIA_NIM_API_KEY
 
-nano .env
+cat > .env <<EOF
+ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_TOKEN}"
+NVIDIA_NIM_API_KEY="${NVIDIA_NIM_API_KEY}"
+EOF
 
 echo ""
 echo "==> Validating environment configuration..."
 
-if grep -q 'freecc' .env; then
+if [[ -z "$ANTHROPIC_TOKEN" ]]; then
     echo ""
-    echo "============================================================"
-    echo " ERROR"
-    echo "============================================================"
-    echo ""
-    echo "Default ANTHROPIC_AUTH_TOKEN still detected."
-    echo "Update your real token in .env and rerun script."
-    echo ""
-    echo "============================================================"
+    echo "ERROR: ANTHROPIC_AUTH_TOKEN cannot be empty."
     exit 1
 fi
 
-if ! grep -q 'NVIDIA_NIM_API_KEY=' .env; then
+if [[ -z "$NVIDIA_NIM_API_KEY" ]]; then
     echo ""
-    echo "============================================================"
-    echo " ERROR"
-    echo "============================================================"
-    echo ""
-    echo "NVIDIA_NIM_API_KEY missing from .env"
-    echo ""
-    echo "============================================================"
+    echo "ERROR: NVIDIA_NIM_API_KEY cannot be empty."
     exit 1
 fi
 
