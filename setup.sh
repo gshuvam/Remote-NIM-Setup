@@ -64,8 +64,8 @@ echo ""
 echo "============================================================"
 echo ""
 
-read -p "Enter ANTHROPIC_AUTH_TOKEN: " ANTHROPIC_TOKEN
-read -p "Enter NVIDIA_NIM_API_KEY: " NVIDIA_NIM_API_KEY
+read -p "Enter ANTHROPIC_AUTH_TOKEN: " ANTHROPIC_TOKEN < /dev/tty
+read -p "Enter NVIDIA_NIM_API_KEY: " NVIDIA_NIM_API_KEY < /dev/tty
 
 cat > .env <<EOF
 ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_TOKEN}"
@@ -121,7 +121,7 @@ echo ""
 echo "====================================================="
 echo ""
 
-read -p "Enter domain/subdomain (or press ENTER to skip): " DOMAIN_NAME
+read -p "Enter domain/subdomain (or press ENTER to skip): " DOMAIN_NAME < /dev/tty
 
 if [[ -n "$DOMAIN_NAME" ]]; then
     clear
@@ -146,7 +146,7 @@ if [[ -n "$DOMAIN_NAME" ]]; then
     echo "============================================================"
     echo ""
 
-    read -p "Press ENTER once DNS is configured..."
+    read -p "Press ENTER once DNS is configured..." < /dev/tty
 fi
 
 echo ""
