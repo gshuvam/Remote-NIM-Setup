@@ -74,6 +74,7 @@ validate_domain() {
 PROJECT_DIR="nvidia-nim"
 SERVICE_NAME="nvidia-nim"
 APP_PORT="8082"
+SSL_ENABLED=false
 
 clear
 
@@ -351,17 +352,39 @@ EOF
     echo ""
     print_status "Acquiring SSL certificate and enabling HTTPS with Certbot"
 
-    sudo certbot --nginx \
+    # Run Certbot and handle failures gracefully
+    if sudo certbot --nginx \
         -d ${DOMAIN_NAME} \
         --redirect \
         --agree-tos \
         --register-unsafely-without-email \
-        -n
+        -n; then
+        
+        SSL_ENABLED=true
+        print_success "SSL certificate successfully installed and HTTPS enabled!"
+    else
+        SSL_ENABLED=false
+        echo ""
+        print_error "Certbot SSL authentication failed!"
+        print_warning "Your Nginx reverse proxy is configured, but HTTPS (SSL) could not be enabled."
+        print_info "This is usually caused by inbound Port 80 (HTTP) being blocked in your cloud firewall (AWS, Azure, GCP, etc.),"
+        print_info "or because DNS records have not fully propagated yet."
+        print_info "Your service is still accessible over standard HTTP at: ${BOLD}http://${DOMAIN_NAME}${RESET}"
+        print_info "You can manually retry SSL generation later by running:"
+        echo -e "  ${BOLD}${YELLOW}sudo certbot --nginx -d ${DOMAIN_NAME}${RESET}"
+        echo ""
+        echo -e "${BOLD}${BCYAN}➔ Press ENTER to continue with standard HTTP setup...${RESET}"
+        read -p "" < /dev/tty
+    fi
 
     print_header "VERIFYING NGINX WEB SERVER"
 
     if sudo systemctl is-active --quiet nginx; then
-        print_success "Nginx reverse proxy is active and routing traffic securely!"
+        if [[ "$SSL_ENABLED" = true ]]; then
+            print_success "Nginx reverse proxy is active and routing traffic securely (HTTPS)!"
+        else
+            print_success "Nginx reverse proxy is active and routing traffic (HTTP only)!"
+        fi
         echo ""
         sudo systemctl --no-pager status nginx | grep -E "Active:" || true
     else
@@ -389,8 +412,14 @@ echo -e "${RESET}"
 print_header "DEPLOYMENT COMPLETE & PERSISTENT"
 
 if [[ -n "$DOMAIN_NAME" ]]; then
-    echo -e "  ${BOLD}Public Secured Endpoint:${RESET}"
-    echo -e "    ${BOLD}${BGREEN}➔ https://${DOMAIN_NAME}${RESET}\n"
+    if [[ "$SSL_ENABLED" = true ]]; then
+        echo -e "  ${BOLD}Public Secured Endpoint (HTTPS):${RESET}"
+        echo -e "    ${BOLD}${BGREEN}➔ https://${DOMAIN_NAME}${RESET}\n"
+    else
+        echo -e "  ${BOLD}Public Endpoint (HTTP Only - SSL Pending):${RESET}"
+        echo -e "    ${BOLD}${BYELLOW}➔ http://${DOMAIN_NAME}${RESET}\n"
+        print_warning "SSL authentication failed during setup. Your API is unsecured."
+    fi
 else
     echo -e "  ${BOLD}Local API Server Endpoint:${RESET}"
     echo -e "    ${BOLD}${BYELLOW}➔ http://YOUR_SERVER_IP:${APP_PORT}${RESET}\n"
@@ -404,14 +433,21 @@ echo -e "\n ${BOLD}${BYELLOW}1. CLOUD FIREWALL & SECURITY GROUP CONFIGURATION (A
 echo -e "    Ensure these inbound ports are open to the internet:"
 echo -e "      ${BOLD}${CYAN}• Port 80${RESET}   (HTTP for Certbot / SSL redirects)"
 echo -e "      ${BOLD}${CYAN}• Port 443${RESET}  (HTTPS for secure public traffic)"
-if [[ -z "$DOMAIN_NAME" ]]; then
-    echo -e "      ${BOLD}${CYAN}• Port 8082${RESET} (Temporary direct API endpoint)"
+if [[ -z "$DOMAIN_NAME" ]] || [[ "$SSL_ENABLED" = false ]]; then
+    echo -e "      ${BOLD}${CYAN}• Port ${APP_PORT}${RESET} (Temporary direct API endpoint)"
 fi
 echo ""
 echo -e "    ${BOLD}${BRED}⚠ SECURITY NOTE:${RESET} Remember to disable external access to port ${BOLD}${APP_PORT}${RESET}"
 echo -e "    once your Nginx reverse proxy and HTTPS domain is working."
 
-echo -e "\n ${BOLD}${BYELLOW}2. TEST AUTO-START & REBOOT PERSISTENCE${RESET}"
+if [[ -n "$DOMAIN_NAME" ]] && [[ "$SSL_ENABLED" = false ]]; then
+    echo -e "\n ${BOLD}${BYELLOW}2. RETRY SECURE SSL GENERATION (CERTBOT)${RESET}"
+    echo -e "    Once you verify Port 80 is open and DNS has propagated, run:"
+    echo -e "      ${BOLD}${CYAN}sudo certbot --nginx -d ${DOMAIN_NAME}${RESET}"
+    echo -e "    This will automatically configure Nginx to route all traffic securely via HTTPS."
+fi
+
+echo -e "\n ${BOLD}${BYELLOW}3. TEST AUTO-START & REBOOT PERSISTENCE${RESET}"
 echo -e "    Run this command to test systemd restart on crash:"
 echo -e "      ${BOLD}${CYAN}sudo systemctl restart ${SERVICE_NAME}${RESET}"
 echo -e "    Then verify persistence on a full machine restart:"
@@ -419,11 +455,11 @@ echo -e "      ${BOLD}${CYAN}sudo reboot${RESET}"
 echo -e "    Reconnect your SSH session and verify:"
 echo -e "      ${BOLD}${CYAN}sudo systemctl status ${SERVICE_NAME}${RESET}"
 
-echo -e "\n ${BOLD}${BYELLOW}3. VIEW RUNTIME LIVE LOGS${RESET}"
+echo -e "\n ${BOLD}${BYELLOW}4. VIEW RUNTIME LIVE LOGS${RESET}"
 echo -e "    Stream active application logs live using systemd journal:"
 echo -e "      ${BOLD}${CYAN}sudo journalctl -u ${SERVICE_NAME} -f${RESET}"
 
-echo -e "\n ${BOLD}${BYELLOW}4. RESTARTING SERVICES${RESET}"
+echo -e "\n ${BOLD}${BYELLOW}5. RESTARTING SERVICES${RESET}"
 echo -e "    Application Server:"
 echo -e "      ${BOLD}${CYAN}sudo systemctl restart ${SERVICE_NAME}${RESET}"
 if [[ -n "$DOMAIN_NAME" ]]; then
