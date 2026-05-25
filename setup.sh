@@ -211,7 +211,7 @@ echo -e "  - ${BOLD}Public access${RESET} on ports 80/443"
 echo -e "  - ${BOLD}Nginx reverse proxy${RESET} routing\n"
 
 print_warning "This installer configures DOMAIN or SUBDOMAIN routing (e.g. api.domain.com)."
-print_info "It does NOT configure URL path routing (e.g. domain.com/v1/nim) automatically."
+print_info "It does NOT configure URL path routing (e.g. domain.com/my-custom-path) automatically."
 print_info "Leave empty and press ENTER to skip Nginx + HTTPS setup entirely.\n"
 
 DOMAIN_NAME=""
@@ -328,19 +328,14 @@ server {
 
     server_name ${DOMAIN_NAME};
 
+    # Secure Loopback Admin UI (Block public access)
+    location ^~ /admin {
+        return 403;
+    }
+
     # Root location (standard routing)
     location / {
         proxy_pass http://127.0.0.1:${APP_PORT};
-
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-
-    # Path-based routing (/v1/nim)
-    location /v1/nim/ {
-        proxy_pass http://127.0.0.1:${APP_PORT}/v1/;
 
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
@@ -432,15 +427,15 @@ fi
 if [[ -n "$DOMAIN_NAME" ]]; then
     if [[ "$SSL_ENABLED" = true ]]; then
         echo -e "  ${BOLD}Public Secured Endpoint (HTTPS):${RESET}"
-        echo -e "    ${BOLD}${BGREEN}➔ https://${DOMAIN_NAME}/v1/nim${RESET}\n"
+        echo -e "    ${BOLD}${BGREEN}➔ https://${DOMAIN_NAME}${RESET}\n"
     else
         echo -e "  ${BOLD}Public Endpoint (HTTP Only - SSL Pending):${RESET}"
-        echo -e "    ${BOLD}${BYELLOW}➔ http://${DOMAIN_NAME}/v1/nim${RESET}\n"
+        echo -e "    ${BOLD}${BYELLOW}➔ http://${DOMAIN_NAME}${RESET}\n"
         print_warning "SSL authentication failed during setup. Your API is unsecured.\n"
     fi
 else
     echo -e "  ${BOLD}Local API Server Endpoint:${RESET}"
-    echo -e "    ${BOLD}${BYELLOW}➔ http://YOUR_SERVER_IP:${APP_PORT}/v1/nim${RESET}\n"
+    echo -e "    ${BOLD}${BYELLOW}➔ http://YOUR_SERVER_IP:${APP_PORT}${RESET}\n"
 fi
 
 # Define protocol and host dynamically
@@ -456,14 +451,14 @@ echo -e "${BOLD}${BBLUE}--------------------------------------------------------
 
 echo -e "\n ${BOLD}${BYELLOW}1. CLAUDE CODE CLI${RESET}"
 echo -e "    Run these commands in your local terminal before starting Claude Code:"
-echo -e "      ${BOLD}${CYAN}export ANTHROPIC_BASE_URL=\"${PROTO}://${HOST_URL}/v1/nim\"${RESET}"
+echo -e "      ${BOLD}${CYAN}export ANTHROPIC_BASE_URL=\"${PROTO}://${HOST_URL}\"${RESET}"
 echo -e "      ${BOLD}${CYAN}export ANTHROPIC_AUTH_TOKEN=\"${ANTHROPIC_TOKEN}\"${RESET}"
 echo -e "      ${BOLD}${CYAN}claude${RESET}"
 
 echo -e "\n ${BOLD}${BYELLOW}2. VS CODE EXTENSIONS (Cline / Roo Code)${RESET}"
 echo -e "    Configure these settings in your extension provider panel:"
 echo -e "      ${BOLD}${CYAN}• API Provider:${RESET}   Anthropic (or Custom OpenAI-compatible)"
-echo -e "      ${BOLD}${CYAN}• Base URL:${RESET}       ${PROTO}://${HOST_URL}/v1/nim"
+echo -e "      ${BOLD}${CYAN}• Base URL:${RESET}       ${PROTO}://${HOST_URL}"
 echo -e "      ${BOLD}${CYAN}• API Key:${RESET}        ${ANTHROPIC_TOKEN}"
 echo -e "      ${BOLD}${CYAN}• Model ID:${RESET}       claude-3-5-sonnet-20241022"
 
@@ -472,14 +467,14 @@ echo -e "    Add this model block to your local ${BOLD}~/.continue/config.json${
 echo -e "      ${BOLD}${CYAN}{${RESET}"
 echo -e "      ${BOLD}${CYAN}  \"title\": \"Remote NVIDIA NIM\",${RESET}"
 echo -e "      ${BOLD}${CYAN}  \"provider\": \"openai\",${RESET}"
-echo -e "      ${BOLD}${CYAN}  \"apiBase\": \"${PROTO}://${HOST_URL}/v1/nim\",${RESET}"
+echo -e "      ${BOLD}${CYAN}  \"apiBase\": \"${PROTO}://${HOST_URL}/v1\",${RESET}"
 echo -e "      ${BOLD}${CYAN}  \"apiKey\": \"${ANTHROPIC_TOKEN}\",${RESET}"
 echo -e "      ${BOLD}${CYAN}  \"model\": \"claude-3-5-sonnet-20241022\"${RESET}"
 echo -e "      ${BOLD}${CYAN}}${RESET}"
 
 echo -e "\n ${BOLD}${BYELLOW}4. CURSOR EDITOR (Custom OpenAI Endpoint)${RESET}"
 echo -e "    In Cursor Settings ➔ Models ➔ OpenAI-Compatible:"
-echo -e "      ${BOLD}${CYAN}• Endpoint URL:${RESET} ${PROTO}://${HOST_URL}/v1/nim"
+echo -e "      ${BOLD}${CYAN}• Endpoint URL:${RESET} ${PROTO}://${HOST_URL}/v1"
 echo -e "      ${BOLD}${CYAN}• API Key:${RESET}      ${ANTHROPIC_TOKEN}"
 echo ""
 

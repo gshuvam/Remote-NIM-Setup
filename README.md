@@ -10,7 +10,7 @@
 
 `Remote-NIM-Setup` is a premium, fully-automated bash bootstrapper designed to deploy a secure, high-performance, and persistent **NVIDIA NIM-compatible FastAPI server bridge** on any cloud VM (AWS EC2, Azure VM, Google Compute Engine, or generic VPS).
 
-It consolidates all system dependencies, **uv package manager**, **Python 3.14**, **systemd**, **Nginx dual-path reverse proxying**, and **Certbot (Let's Encrypt SSL/HTTPS)** into a single, interactive, and beautifully styled CLI installer.
+It consolidates all system dependencies, **uv package manager**, **Python 3.14**, **systemd**, **Nginx reverse proxying**, and **Certbot (Let's Encrypt SSL/HTTPS)** into a single, interactive, and beautifully styled CLI installer.
 
 ---
 
@@ -27,8 +27,8 @@ sequenceDiagram
     participant NIM as NVIDIA NIM Server (Cloud)
 
     Note over Dev,Nginx: Secure connection using Custom Auth Token
-    Dev->>Nginx: API Request to https://yourdomain.com/v1/nim/messages
-    Note over Nginx: Path-Based Routing & SSL Decryption<br/>Strips "/v1/nim/" prefix
+    Dev->>Nginx: API Request to https://yourdomain.com/v1/messages
+    Note over Nginx: SSL Decryption & Reverse Proxy Routing
     Nginx->>FastAPI: Proxied Request to http://127.0.0.1:8082/v1/messages
     Note over FastAPI: Validates ANTHROPIC_AUTH_TOKEN<br/>Translates request & appends NIM API Key
     FastAPI->>NIM: Outbound Request to https://integrate.api.nvidia.com/v1
@@ -44,9 +44,9 @@ sequenceDiagram
 * 🚀 **Single-Line Bootstrap:** Performs system audits, package upgrades, virtual environment provisioning, and starts background services in seconds.
 * 📦 **UV & Python 3.14 Native:** Utilizes Astral's lightning-fast `uv` package manager to fetch, build, and run the FastAPI server on a modern **Python 3.14** engine.
 * 🛡️ **Personal Auth Protection:** Prompts you to set a custom token (`ANTHROPIC_AUTH_TOKEN`) to prevent unauthorized public access to your remote proxy bridge.
-* 🧩 **Robust Input Sanitizer:** Cleverly sanitizes domain inputs. Whether you enter `https://api.yourdomain.com/v1/nim`, `www.yourdomain.com`, or `api.yourdomain.com:8080/`, it extracts `api.yourdomain.com` cleanly, avoiding Certbot or Nginx crashes.
+* 🧩 **Robust Input Sanitizer:** Cleverly sanitizes domain inputs. Whether you enter `https://api.yourdomain.com`, `www.yourdomain.com`, or `api.yourdomain.com:8080/`, it extracts `api.yourdomain.com` cleanly, avoiding Certbot or Nginx crashes.
 * 📡 **Public IP Safeguards:** Detects your VM's public IP dynamically using `api.ipify.org` and warns you if it's dynamic (recommending Static/Elastic IPs) while offering a manual override.
-* 🔗 **Dual-Path Nginx Routing:** Configures Nginx to support standard root `/` traffic and path-based API traffic under **`/v1/nim/`** using trailing-slash proxy overrides.
+* 🔗 **Nginx Reverse Proxy:** Configures Nginx to map standard incoming Port 80/443 traffic directly to the local FastAPI server.
 * 🔄 **Resilient Non-Fatal SSL Setup:** Certbot validation errors are handled gracefully. If Port 80 is blocked or DNS isn't fully propagated, it falls back to standard HTTP and prints an action plan, rather than terminating.
 * 💡 **Client Integration Hub:** Displays pre-populated config templates at the end of the script for **Claude Code CLI**, **Cline**, **Roo Code**, **Continue**, and **Cursor**.
 
@@ -106,7 +106,7 @@ Once the script completes, connect your local coding assistant tools using the f
 Set these environment variables in your terminal session before starting Claude Code:
 
 ```bash
-export ANTHROPIC_BASE_URL="https://yourdomain.com/v1/nim"
+export ANTHROPIC_BASE_URL="https://yourdomain.com"
 export ANTHROPIC_AUTH_TOKEN="your_custom_auth_token"
 claude
 ```
@@ -115,7 +115,7 @@ claude
 > **Make It Permanent:**
 > Add these export lines to your local shell config file (e.g. `~/.bashrc`, `~/.zshrc`, or `~/.config/fish/config.fish`) to avoid re-exporting them on every terminal session:
 > ```bash
-> echo 'export ANTHROPIC_BASE_URL="https://yourdomain.com/v1/nim"' >> ~/.zshrc
+> echo 'export ANTHROPIC_BASE_URL="https://yourdomain.com"' >> ~/.zshrc
 > echo 'export ANTHROPIC_AUTH_TOKEN="your_custom_auth_token"' >> ~/.zshrc
 > source ~/.zshrc
 > ```
@@ -126,7 +126,7 @@ claude
 Configure the extension settings in your VS Code sidebar:
 
 * **API Provider:** `Anthropic` or `Custom OpenAI-compatible`
-* **Base URL:** `https://yourdomain.com/v1/nim`
+* **Base URL:** `https://yourdomain.com`
 * **API Key:** `your_custom_auth_token`
 * **Model ID:** `claude-3-5-sonnet-20241022`
 
@@ -141,7 +141,7 @@ Append this model configuration within your local `~/.continue/config.json` file
     {
       "title": "Remote NVIDIA NIM",
       "provider": "openai",
-      "apiBase": "https://yourdomain.com/v1/nim",
+      "apiBase": "https://yourdomain.com/v1",
       "apiKey": "your_custom_auth_token",
       "model": "claude-3-5-sonnet-20241022"
     }
@@ -154,9 +154,26 @@ Append this model configuration within your local `~/.continue/config.json` file
 ### 4. Cursor Editor
 1. Open Cursor and navigate to **Cursor Settings ➔ Models ➔ OpenAI-Compatible**.
 2. Enable the feature and configure:
-   * **Endpoint URL:** `https://yourdomain.com/v1/nim`
+   * **Endpoint URL:** `https://yourdomain.com/v1`
    * **API Key:** `your_custom_auth_token`
 3. Click "Save" and select your custom model.
+
+## 🔒 Secure Admin Dashboard Access
+
+The proxy server includes a powerful local **Admin UI** (located internally at `http://127.0.0.1:8082/admin`) to inspect connections, view active logging streams, and update NIM models or provider settings.
+
+To protect your API keys and server configuration, the reverse proxy **securely blocks all public `/admin` requests** (returning a `403 Forbidden` status).
+
+To access the configuration dashboard safely:
+1. Establish a secure **SSH Port Forwarding Tunnel** to your VM:
+   ```bash
+   ssh -L 8082:localhost:8082 user@your_vm_ip
+   ```
+2. Open your local web browser and navigate to:
+   ```text
+   http://127.0.0.1:8082/admin
+   ```
+This forwards your local browser requests securely over the encrypted SSH session directly to the loopback address on the VM.
 
 ---
 
