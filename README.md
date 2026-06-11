@@ -96,6 +96,29 @@ curl -sL https://raw.githubusercontent.com/gshuvam/Remote-NIM-Setup/main/setup.s
 
 ---
 
+## 🔄 Updating the Server
+
+When you need to pull the latest application updates, execute the automated update script on your remote VM:
+
+```bash
+curl -sL https://raw.githubusercontent.com/gshuvam/Remote-NIM-Setup/main/update.sh | bash
+```
+
+> [!TIP]
+> **Bypass GitHub CDN Cache:**
+> Just like the installer, you can force-bypass GitHub's raw CDN caching by appending a random query string:
+> ```bash
+> curl -sL "https://raw.githubusercontent.com/gshuvam/Remote-NIM-Setup/main/update.sh?v=$(date +%s)" | bash
+> ```
+
+This update script:
+1. **Verifies Running Status:** Detects if the `nvidia-nim` service is active and stops it to prevent file access locks during updates.
+2. **Finds Project Directory:** Resolves the application path directly from the registered systemd service unit.
+3. **Compares & Updates Files:** Performs a git fetch, displays modified files, handles uncommitted local changes safely (via stash), and pulls the latest remote commits.
+4. **Starts Daemon:** Reloads the systemd daemon, starts the server back up, and ensures it is enabled for automatic boot start.
+
+---
+
 ## 🛠️ Developer Client Integration Guides
 
 Once the script completes, connect your local coding assistant tools using the following configurations. 
