@@ -177,8 +177,10 @@ else
     # Sync Python dependencies with uv
     if [ -f "$HOME/.local/bin/uv" ] || command -v uv >/dev/null 2>&1; then
         export PATH="$HOME/.local/bin:$PATH"
+        print_status "Ensuring uv package manager meets minimum required version"
+        uv self update || curl -LsSf https://astral.sh/uv/install.sh | sh || true
         print_status "Synchronizing Python virtual environment dependencies"
-        uv sync || true
+        uv sync
         print_success "Dependencies synchronized."
     fi
 fi
