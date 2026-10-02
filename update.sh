@@ -48,6 +48,18 @@ print_status() {
 
 SERVICE_NAME="nvidia-nim"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
+WAS_RUNNING=false
+
+# Safety trap: restore service if update script errors or gets cancelled
+cleanup() {
+    local exit_code=$?
+    if [ $exit_code -ne 0 ] && [ "${WAS_RUNNING:-false}" = true ]; then
+        echo ""
+        print_warning "Script interrupted or failed. Attempting to restart '${SERVICE_NAME}' service..."
+        sudo systemctl start "$SERVICE_NAME" || true
+    fi
+}
+trap cleanup EXIT
 
 clear || true
 
@@ -134,20 +146,53 @@ else
     print_info "New updates detected on the remote repository!"
     echo ""
     echo -e "${BOLD}${CYAN}--- CHANGELOG (Modified Files) ---${RESET}"
-    git diff --name-status "HEAD...origin/${BRANCH}"
+    git diff --name-status "HEAD...origin/${BRANCH}" || true
     echo -e "${BOLD}${CYAN}----------------------------------${RESET}"
     echo ""
 
-    # Check if there are local uncommitted changes that might conflict
-    if ! git diff --quiet; then
-        print_warning "Local uncommitted changes detected in the application repository."
-        print_info "Stashing local modifications to guarantee a clean merge..."
-        git stash
+    # Check if there are local uncommitted or untracked changes
+    if [ -n "$(git status --porcelain)" ]; then
+        print_warning "Local uncommitted modifications detected in the application repository."
+        STASH_NAME="auto-stash-$(date +%Y%m%d-%H%M%S)"
+        print_info "Stashing local modifications as '${STASH_NAME}'..."
+        git stash --include-untracked -m "${STASH_NAME}" || true
     fi
 
-    print_status "Updating files via git pull"
-    git pull origin "${BRANCH}"
-    print_success "Files successfully updated."
+    # Handle fast-forward vs divergent branches cleanly
+    if git merge-base --is-ancestor HEAD "origin/${BRANCH}"; then
+        print_status "Fast-forwarding files to latest remote commits"
+        git merge --ff-only "origin/${BRANCH}"
+        print_success "Files successfully updated via fast-forward."
+    else
+        LOCAL_AHEAD=$(git rev-list --count "origin/${BRANCH}..HEAD" 2>/dev/null || echo "0")
+        BACKUP_BRANCH="backup-${BRANCH}-$(date +%Y%m%d-%H%M%S)"
+        print_warning "Divergent branches detected (${LOCAL_AHEAD} local commit(s) ahead/diverged from remote origin/${BRANCH})."
+        print_info "Preserving local state to backup branch: ${BOLD}${YELLOW}${BACKUP_BRANCH}${RESET}"
+        git branch "$BACKUP_BRANCH"
+        print_status "Synchronizing local repository with origin/${BRANCH}"
+        git reset --hard "origin/${BRANCH}"
+        print_success "Files successfully aligned with origin/${BRANCH}."
+    fi
+
+    # Sync Python dependencies with uv
+    if [ -f "$HOME/.local/bin/uv" ] || command -v uv >/dev/null 2>&1; then
+        export PATH="$HOME/.local/bin:$PATH"
+        print_status "Synchronizing Python virtual environment dependencies"
+        uv sync || true
+        print_success "Dependencies synchronized."
+    fi
+fi
+
+# Check and migrate legacy ExecStart in service file if necessary
+if [ -f "$SERVICE_FILE" ] && grep -q "uvicorn server:app" "$SERVICE_FILE"; then
+    print_warning "Legacy startup command 'uvicorn server:app' detected in service file."
+    print_status "Migrating service file to modern entrypoint (uv run fcc-server)"
+    sudo sed -i 's|uv run uvicorn server:app.*|uv run fcc-server|g' "$SERVICE_FILE"
+    if ! grep -q "FCC_OPEN_BROWSER" "$SERVICE_FILE"; then
+        sudo sed -i '/Environment=PATH=/a Environment=FCC_OPEN_BROWSER=0' "$SERVICE_FILE"
+    fi
+    sudo systemctl daemon-reload
+    print_success "Service unit file successfully modernized."
 fi
 
 # 4. Start the app via daemon

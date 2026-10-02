@@ -147,10 +147,16 @@ echo ""
 print_status "Bootstrapping application repository"
 
 if [ -d "$PROJECT_DIR" ]; then
-    print_info "Directory '$PROJECT_DIR' already exists. Pulling latest code changes..."
+    print_info "Directory '$PROJECT_DIR' already exists. Synchronizing latest code changes..."
     echo ""
     cd "$PROJECT_DIR"
-    git pull
+    git fetch origin
+    BRANCH=$(git rev-parse --abbrev-ref HEAD)
+    if git merge-base --is-ancestor HEAD "origin/${BRANCH}"; then
+        git merge --ff-only "origin/${BRANCH}"
+    else
+        git reset --hard "origin/${BRANCH}"
+    fi
     cd ..
 else
     print_info "Cloning Free-Claude-Code application..."
@@ -196,6 +202,9 @@ done
 cat > .env <<EOF
 ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_TOKEN}"
 NVIDIA_NIM_API_KEY="${NVIDIA_NIM_API_KEY}"
+HOST="0.0.0.0"
+PORT="${APP_PORT}"
+FCC_OPEN_BROWSER="0"
 EOF
 
 echo ""
@@ -279,7 +288,8 @@ After=network.target
 User=$USER
 WorkingDirectory=$(pwd)
 Environment=PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=$HOME/.local/bin/uv run uvicorn server:app --host 0.0.0.0 --port ${APP_PORT}
+Environment=FCC_OPEN_BROWSER=0
+ExecStart=$HOME/.local/bin/uv run fcc-server
 Restart=always
 RestartSec=5
 
