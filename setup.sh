@@ -134,10 +134,11 @@ sudo apt install -y \
     python3-certbot-nginx
 
 echo ""
-print_status "Installing uv package manager"
+print_status "Installing / Updating uv package manager"
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 export PATH="$HOME/.local/bin:$PATH"
+uv self update || true
 
 echo ""
 print_status "Installing Python 3.14 via uv"
@@ -155,6 +156,11 @@ if [ -d "$PROJECT_DIR" ]; then
     if git merge-base --is-ancestor HEAD "origin/${BRANCH}"; then
         git merge --ff-only "origin/${BRANCH}"
     else
+        LOCAL_AHEAD=$(git rev-list --count "origin/${BRANCH}..HEAD" 2>/dev/null || echo "0")
+        BACKUP_BRANCH="backup-${BRANCH}-$(date +%Y%m%d-%H%M%S)"
+        print_warning "Divergent branches detected (${LOCAL_AHEAD} local commit(s) ahead/diverged from remote origin/${BRANCH})."
+        print_info "Preserving local state to backup branch: ${BOLD}${YELLOW}${BACKUP_BRANCH}${RESET}"
+        git branch "$BACKUP_BRANCH" 2>/dev/null || true
         git reset --hard "origin/${BRANCH}"
     fi
     cd ..
@@ -210,6 +216,10 @@ EOF
 echo ""
 print_success "Environment configuration saved to ${BOLD}.env${RESET}"
 echo ""
+
+print_status "Synchronizing Python virtual environment dependencies with uv"
+uv sync
+print_success "Dependencies synchronized successfully."
 
 clear
 
